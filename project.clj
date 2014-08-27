@@ -22,7 +22,7 @@
                   {:source-paths ["test/cljx"]
                    :output-path "target/test-classes"
                    :rules :cljs}]}
-
+  :hooks [cljx.hooks]
   :cljsbuild {:test-commands {"node" ["node" :node-runner "target/testable.js"]}
               :builds [{:source-paths ["target/classes" "target/test-classes"]
                         :compiler {:output-to "target/testable.js"
