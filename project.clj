@@ -1,5 +1,7 @@
 (defproject clj-vat "0.1.0"
+  :description "A Clojure(Script) library designed to validate European VAT code"
   :jar-exclusions [#"\.cljx|\.swp|\.swo|\.DS_Store"]
+  :url "https://github.com/hiram-madelaine/clj-vat"
   :source-paths ["src/cljx"]
   :test-paths ["target/test-classes"]
   :dependencies [[org.clojure/clojure "1.6.0-alpha1"]
