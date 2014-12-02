@@ -10,7 +10,6 @@
 
 
 
-
 (def idempotent-digits-nums
   (prop/for-all [v gen/pos-int]
                 (= v (vat/->num  (vat/->digits v)))))

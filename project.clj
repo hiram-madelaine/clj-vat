@@ -4,7 +4,7 @@
   :url "https://github.com/hiram-madelaine/clj-vat"
   :source-paths ["src/cljx"]
   :test-paths ["target/test-classes"]
-  :dependencies [[org.clojure/clojure "1.6.0-alpha1"]
+  :dependencies [[org.clojure/clojure "1.6.0"]
                  [org.clojure/clojurescript "0.0-2173"]
                  [org.clojure/test.check "0.5.8"]
                  [com.cemerick/double-check "0.5.7"]]

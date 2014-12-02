@@ -158,7 +158,24 @@
 #+cljs (.log js/console (pr-str x)))
   x)
 
-
+(defn sum-fn
+  [{:keys [pre weight norm rf init check value]
+      :or   {pre    identity
+             weight (repeat 1)
+             norm   identity
+             rf     +
+             init   0
+             check  identity}}]
+  (let [last? #(if value % (butlast %))]
+    (fn [s]
+      (->> s
+           pre
+           last?
+           ->digits
+           (map * weight)
+           (map norm)
+           (reduce rf init)
+           check))))
 
 (defn checksum
   "Permet de valider le checksum d'une suite de chiffres.
@@ -172,25 +189,20 @@
    :value Si une valeur est passé alors le checksum est calculé sur l'ensemble de la séquence."
   ([s]
     (checksum s {}))
-  ([s {:keys [pre weight norm rf init check value]
+  ([s {:keys [pre value regex]
       :or {pre identity
-           weight (repeat 1)
-           norm identity
-           rf +
-           init 0
-           check identity}}]
-  (let [last? #(if value % (butlast %))
-        ss (pre s) _ (debug ss)
-        t (->> ss
-            last?
-            ->digits
-            (map * weight)
-            (map norm)
-            (reduce rf init)
-            check)]
-    (if value
-      (= t value)
-      (= (str t) (str (last ss)))))))
+           regex #".+"}
+      :as m}]
+   (if (re-matches regex s)
+    (let [t ((sum-fn m) s)]
+      (if value
+        (= t value)
+        (= (str t)
+           (-> s
+               pre
+               last
+               str))))
+    false)))
 
 
 (defn zero-mod
@@ -228,18 +240,21 @@
    Check de l'algorithme de Luhn sur le numéro SIREN : les neuf derniers chiffres.
    Check de la clef de TVA : les deux premiers chiffres."
   [s]
-  (let [[clef siren] (split->nums 2 s)]
-    (and (luhn (str siren))
-         (= clef (-> siren
-                   (mod 97)
-                   (* 3)
-                   (+ 12)
-                   (mod 97))))))
+  (if (re-matches #"[0-9]{11}" s)
+   (let [[clef siren] (split->nums 2 s)]
+     (and (luhn (str siren))
+          (= clef (-> siren
+                      (mod 97)
+                      (* 3)
+                      (+ 12)
+                      (mod 97)))))
+   false))
 
 (defn check-vat-dk
   "Vérifie un identifiant de TVA Danois."
   [s]
-  (checksum s {:weight [2 7 6 5 4 3 2 1]
+  (checksum s {:regex #"[1-9]{1}[0-9]{7}"
+               :weight [2 7 6 5 4 3 2 1]
                :check mod11
                :value 0}))
 
@@ -249,7 +264,8 @@
 (defn check-vat-de
   [s]
   (let [zero?->10 (p?->r 10 = 0)]
-    (checksum s {:rf (comp mod11 #(* 2 %) zero?->10 mod10 +)
+    (checksum s {:regex #"[1-9]{1}[0-9]{8}"
+                 :rf (comp mod11 #(* 2 %) zero?->10 mod10 +)
                  :init 10
                  :check (comp =10?->0 #(- 11 %))})))
 
@@ -260,7 +276,8 @@
  (defn check-vat-es
    "Valide un identifiant de TVA Espagnol pour les entreprises commerciales."
    [s]
-   (luhn s {:pre (sub 1 9)}))
+   (luhn s {:regex #"[0-9A-Z]{1}[0-9]{7}[0-9A-Z]{1}"
+            :pre (sub 1 9)}))
 
  (defn check-vat-se
    [s]
@@ -287,13 +304,15 @@
 
   (defn check-vat-nl
     [s]
-    (checksum s {:pre (sub 0 9)
+    (checksum s {:regex #"[0-9]{9}B[0-9]{2}"
+                 :pre (sub 0 9)
                  :weight (range 9 1 -1)
                  :check mod11}))
 
   (defn check-vat-el
     [s]
-    (checksum s {:weight (iterate #(/ % 2) 256)
+    (checksum s {:regex #"[0-9]{9}"
+                 :weight (iterate #(/ % 2) 256)
                  :check mod11}))
 
   (defn old->new
@@ -313,7 +332,8 @@
 
   (defn check-vat-at
     [s]
-    (checksum s {:pre (sub 1)
+    (checksum s {:regex #"U[0-9]{8}"
+                 :pre (sub 1)
                  :weight (cycle [1 2])
                  :norm +>9
                  :check #(last (->digits (- 96 %)))}))
@@ -328,7 +348,8 @@
 
   (defn check-vat-fi
     [s]
-    (checksum s {:weight [7 9 10 5 8 4 2 1]
+    (checksum s {:regex #"[0-9]{8}"
+                 :weight [7 9 10 5 8 4 2 1]
                  :check mod11
                  :value 0}))
 
@@ -350,9 +371,11 @@
 
  (defn check-vat-be
    [s]
-   (let [[sum c] (split->nums 7 s)]
-     (= c
-        ((zero-mod 97) sum))))
+   (if (re-matches #"0[1-9]{1}[0-9]{8}" s)
+    (let [[sum c] (split->nums 8 s)]
+      (= c
+         ((zero-mod 97) sum)))
+    false))
 
  (defn check-vat-lu
    [s]
@@ -365,7 +388,220 @@
    (let [fn (str "check-vat-" (.toLowerCase ctry))]
      ((intern *ns* (symbol fn)) ident)))
 
- (defmulti check-vat :ctry )
+(defn ceil [n m]
+  (-> n
+      (/ m)
+      (Math/ceil)
+      (* m)
+      int))
+
+
+(defn nearest-higher-multiple-of
+  [n m]
+  (let [mod? (mod-m m)]
+    (if (zero? (mod? n))
+      (+ n m)
+      (ceil n m))))
+
+
+
+(defn check-vat-cz
+  [s]
+  (checksum s {:regex #"[0-8]{1}[0-9]{7}"
+               :weight (range 8 1 -1)
+               :check #(mod10 (- (nearest-higher-multiple-of % 11) %))}))
+
+(defn check-vat-ee
+  [s]
+  (checksum s {:regex #"10[0-9]{7}"
+               :weight [3 7 1 3 7 1 3 7]
+               :check #(- (ceil % 10) %)}))
+
+
+
+(def sum-bg (sum-fn {:weight (range 3 11)
+                     :check mod11}))
+
+(defn check-vat-bg
+  [s]
+  (checksum
+    s {:regex #"[0-9]{9}"
+       :weight (range 1 9)
+       :check #(let [r1 (mod11 %)]
+                (if (= 10 r1)
+                  (let [r2 (sum-bg s)]
+                    (if (= 10 r2)
+                      0
+                      r2))
+                  r1))}))
+
+
+(defn check-fn-lt
+  [s rg]
+  (fn [r]
+    (let [r1 (mod11 r)]
+      (if-not (= 10 r1)
+        r1
+        (let [r2 (->> s
+                      ->digits
+                      butlast
+                      (map * rg)
+                      (reduce +)
+                      mod11)]
+          (if (= 10 r2)
+            0
+            r2))))))
+
+(defn check-vat-lt
+  [s]
+  (condp = (count s)
+        9 (checksum s {:weight (range 1 9)
+                        :check (check-fn-lt s [3 4 5 6 7 8 9 1])})
+        12 (checksum s {:weight (concat (range 1 10) [1 2])
+                        :check  (check-fn-lt s (concat (range 3 10) (range 1 5)))})
+      false))
+
+
+(defn comp-zero
+  "Complete s with zeros to attain a lenth of n"
+  [n s]
+  (let [ss (->digits s)]
+    (if (<= 10 (count ss))
+      s
+      (apply str (comp-zero n (cons "0" ss))))))
+
+
+
+(defn check-vat-ro
+  [s]
+  (checksum s {:pre #(comp-zero 10 %)
+               :weight [7 5 3 2 1 7 5 3 2]
+               :check #(let [r1 (mod11 (* 10 %))]
+                        (if (= 10 r1)
+                          0
+                          r1))}))
+
+
+(defn check-vat-si
+  "Check Slovenia's VAT"
+  [s]
+  (checksum s {:weight (range 8 1 -1)
+               :check #(let [r (- 11 (mod11 %))]
+                        (condp = r
+                          10 0
+                          11 -1
+                          r))}))
+
+
+(defn check-vat-sk
+  "Check Slovakia's VAT"
+  [s]
+  (-> s
+      parse-num
+      mod11
+      zero?))
+
+
+(defn check-vat-lv
+  "Check Latvia's VAT"
+  [s]
+  (checksum s {:weight [9 1 4 8 3 10 2 5 7 6]
+               :check #(let [r (- 3 (mod11 %))]
+                        (cond
+                          (< r -1) (+ r 11)
+                          (> r -1) r
+                          (= r -1) -1))}))
+
+
+(defn check-vat-mt
+  "Check Malta's VAT"
+  [s]
+  (let [[ss c] (split->nums 6 s)]
+   (checksum (str ss) {:weight [3 4 6 7 8 9]
+                :value  c
+                :check  #(let [r (- 37 (mod % 37))]
+                          (if (= 0 r)
+                            37
+                            r))})))
+
+
+(defmulti check-ident (fn [s] (.substring s 0 2)))
+
+(defmethod check-ident "FR"
+  [s]
+  (check-vat-fr (.substring s 2)))
+
+(defmethod check-ident "GB"
+  [s]
+  (check-vat-gb (.substring s 2)))
+
+(defmethod check-ident "DK"
+  [s]
+  (check-vat-dk (.substring s 2)))
+
+(defmethod check-ident "ES"
+  [s]
+  (check-vat-es (.substring s 2)))
+
+(defmethod check-ident "PT"
+  [s]
+  (check-vat-pt (.substring s 2)))
+
+(defmethod check-ident "PL"
+  [s]
+  (check-vat-pl (.substring s 2)))
+
+(defmethod check-ident "IT"
+  [s]
+  (check-vat-it (.substring s 2)))
+
+(defmethod check-ident "DE"
+  [s]
+  (check-vat-de (.substring s 2)))
+
+(defmethod check-ident "IE"
+  [s]
+  (check-vat-ie (.substring s 2)))
+
+(defmethod check-ident "NL"
+  [s]
+  (check-vat-nl (.substring s 2)))
+
+(defmethod check-ident "HU"
+  [s]
+  (check-vat-hu (.substring s 2)))
+
+(defmethod check-ident "CZ"
+  [s]
+  (check-vat-cz (.substring s 2)))
+
+(defmethod check-ident "EE"
+  [s]
+  (check-vat-ee (.substring s 2)))
+
+(defmethod check-ident "BG"
+  [s]
+  (check-vat-bg (.substring s 2)))
+
+(defmethod check-ident "LT"
+  [s]
+  (check-vat-lt (.substring s 2)))
+
+(defmethod check-ident "RO"
+  [s]
+  (check-vat-ro (.substring s 2)))
+
+(defmethod check-ident "LV"
+  [s]
+  (check-vat-lv (.substring s 2)))
+
+(defmethod check-ident "MT"
+  [s]
+  (check-vat-mt (.substring s 2)))
+
+
+
+(defmulti check-vat :ctry )
 
  (defmethod check-vat "FR"
   [{:keys [ctry ident]}]
