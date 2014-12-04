@@ -3,7 +3,7 @@
 
 (defn parse-num
    [s]
-#+cljs (js/parseInt s)
+#+cljs (js/parseInt s 10)
 #+clj (Long/parseLong (str s)))
 
 
@@ -24,7 +24,7 @@
   (->num [this] "Convertit une :
    * chaîne de chifres,
    * une séquence de chiffres,
-   * une séquence de strin
+   * une séquence de string
    en un nombre :
    \"2355\" -> 2355
    [2 3 5 5 ] -> 2355
@@ -139,16 +139,18 @@
 
 (defn check-vat-gb
   [str]
-  (let [ns (->digits str)
-        check (->num (subvec ns 7))
-        w-sum (reduce + (map * ns (range 8 1 -1)))
-        valid? (fn [sum] (->> sum
-                        (iterate #(- % 97))
-                        (drop-while pos?)
-                        first
-                        Math/abs
-                        (= check)))]
-    (some valid? [w-sum (+ w-sum 55)])))
+  (if (re-matches #"[0-9]{9,12}" str)
+    (let [ns (->digits str)
+         check (->num (subvec ns 7))
+         w-sum (reduce + (map * ns (range 8 1 -1)))
+         valid? (fn [sum] (->> sum
+                               (iterate #(- % 97))
+                               (drop-while pos?)
+                               first
+                               Math/abs
+                               (= check)))]
+     (some valid? [w-sum (+ w-sum 55)]))
+    false))
 
 (def ^:dynamic *debug* false)
 
@@ -210,6 +212,10 @@
    [m]
    (fn [n] (- m (mod n m))))
 
+
+(def zero-mod11 (zero-mod 11))
+(def zero-mod10 (zero-mod 10))
+
 (defn sub
   ([f]
     (fn [s] (.substring s f)))
@@ -233,7 +239,7 @@
   (checksum s {:pre reverse
                :weight (cycle [1 2])
                :norm +>9
-               :check (zero-mod 10)}))
+               :check zero-mod10}))
 
 (defn check-vat-fr
   "Vérifie la partie numérique d'un numéro de TVA français.
@@ -269,9 +275,9 @@
                  :init 10
                  :check (comp =10?->0 #(- 11 %))})))
 
- (defn check-vat-it
-   [s]
-   (luhn s))
+(defn check-vat-it
+  [s]
+  (luhn s {:regex #"[0-9]{11}"}))
 
  (defn check-vat-es
    "Valide un identifiant de TVA Espagnol pour les entreprises commerciales."
@@ -281,33 +287,39 @@
 
  (defn check-vat-se
    [s]
-   (luhn s {:pre (sub 0 10)}))
+   (luhn s {:regex #"[0-9]{12}"
+            :pre (sub 0 10)}))
 
 
  (def >9?->0 (p?->0 > 9))
 
  (defn check-vat-pt
    [s]
-   (checksum s {:weight (range 9 1 -1)
-                :check (comp >9?->0 (zero-mod 11))}))
+   (checksum s {:regex #"[1-9]{1}[0-9]{8}"
+                :weight (range 9 1 -1)
+                :check (comp >9?->0 zero-mod11)}))
 
   (defn check-vat-hu
     [s]
-    (checksum s {:weight [9 7 3 1 9 7 3 1]
+    (checksum s {:regex #"[0-9]{8}"
+                 :weight [9 7 3 1 9 7 3 1]
                  :check mod10
                  :value 0}))
 
-  (defn check-vat-pl
-    [s]
-	  (checksum s {:weight [6 5 7 2 3 4 5 6 7]
-                :check mod11}))
+(defn check-vat-pl
+  [s]
+  (checksum s {:regex #"^[0-9]{10}$"
+               :weight [6 5 7 2 3 4 5 6 7]
+               :check  mod11}))
 
   (defn check-vat-nl
     [s]
-    (checksum s {:regex #"[0-9]{9}B[0-9]{2}"
+    (checksum s {:regex #"^[0-9]{9}B[0-9]{2}$"
                  :pre (sub 0 9)
                  :weight (range 9 1 -1)
                  :check mod11}))
+
+
 
   (defn check-vat-el
     [s]
@@ -325,14 +337,15 @@
   (defn check-vat-ie
    [s]
    (let [i->l #(get {0 "W"} % (i->c (+ % 64)))]
-     (checksum s {:pre old->new
+     (checksum s {:regex #"^[0-9][0-9A-Z\+\*][0-9]{5}[A-W]$"
+                  :pre old->new
                   :weight (range 8 1 -1)
                   :check (comp i->l (mod-m 23))})))
 
 
   (defn check-vat-at
     [s]
-    (checksum s {:regex #"U[0-9]{8}"
+    (checksum s {:regex #"U[0-9]{8}$"
                  :pre (sub 1)
                  :weight (cycle [1 2])
                  :norm +>9
@@ -342,13 +355,13 @@
   (defn check-vat-is
     [s]
     (checksum s {:weight (range 8 1 -1)
-                 :check (comp =10?->0 (zero-mod 11))}))
+                 :check (comp =10?->0 zero-mod11)}))
 
   (def =11?->0 (p?->0 = 11))
 
   (defn check-vat-fi
     [s]
-    (checksum s {:regex #"[0-9]{8}"
+    (checksum s {:regex #"^[0-9]{8}$"
                  :weight [7 9 10 5 8 4 2 1]
                  :check mod11
                  :value 0}))
@@ -369,19 +382,21 @@
                    :check check})))
 
 
+(def zero-mod-97 (zero-mod 97))
+
  (defn check-vat-be
    [s]
-   (if (re-matches #"0[1-9]{1}[0-9]{8}" s)
+   (if-not (re-matches #"0[1-9]{1}[0-9]{8}" s)
+     false
     (let [[sum c] (split->nums 8 s)]
-      (= c
-         ((zero-mod 97) sum)))
-    false))
+      (= c (zero-mod-97 sum)))))
 
  (defn check-vat-lu
    [s]
-   (let [[f c] (split->nums 6 s)]
-     (= c
-       (mod f 89))))
+   (if (re-matches #"^[0-9]{8}$" s)
+    (let [[f c] (split->nums 6 s)]
+      (= c (mod f 89)))
+    false))
 
  #_(defn check-tva
    [{:keys [ctry ident]}]
@@ -407,7 +422,7 @@
 
 (defn check-vat-cz
   [s]
-  (checksum s {:regex #"[0-8]{1}[0-9]{7}"
+  (checksum s {:regex #"^[0-8][0-9]{7}$"
                :weight (range 8 1 -1)
                :check #(mod10 (- (nearest-higher-multiple-of % 11) %))}))
 
@@ -425,7 +440,7 @@
 (defn check-vat-bg
   [s]
   (checksum
-    s {:regex #"[0-9]{9}"
+    s {:regex #"^[0-9]{9}$"
        :weight (range 1 9)
        :check #(let [r1 (mod11 %)]
                 (if (= 10 r1)
@@ -455,9 +470,11 @@
 (defn check-vat-lt
   [s]
   (condp = (count s)
-        9 (checksum s {:weight (range 1 9)
+        9 (checksum s {:regex #"^[0-9]{9}$"
+                       :weight (range 1 9)
                         :check (check-fn-lt s [3 4 5 6 7 8 9 1])})
-        12 (checksum s {:weight (concat (range 1 10) [1 2])
+        12 (checksum s {:regex #"[0-9]{12}"
+                        :weight (concat (range 1 10) [1 2])
                         :check  (check-fn-lt s (concat (range 3 10) (range 1 5)))})
       false))
 
@@ -474,7 +491,8 @@
 
 (defn check-vat-ro
   [s]
-  (checksum s {:pre #(comp-zero 10 %)
+  (checksum s {:regex #"^[0-9]{2,10}$"
+               :pre #(comp-zero 10 %)
                :weight [7 5 3 2 1 7 5 3 2]
                :check #(let [r1 (mod11 (* 10 %))]
                         (if (= 10 r1)
@@ -482,11 +500,14 @@
                           r1))}))
 
 
+
+
 (defn check-vat-si
   "Check Slovenia's VAT"
   [s]
-  (checksum s {:weight (range 8 1 -1)
-               :check #(let [r (- 11 (mod11 %))]
+  (checksum s {:regex #"^[0-9]{8}$"
+               :weight (range 8 1 -1)
+               :check #(let [r (zero-mod11 %)]
                         (condp = r
                           10 0
                           11 -1
@@ -496,16 +517,19 @@
 (defn check-vat-sk
   "Check Slovakia's VAT"
   [s]
-  (-> s
-      parse-num
-      mod11
-      zero?))
+  (if-not (re-matches #"^[0-9]{10}$" s)
+    false
+    (-> s
+        parse-num
+        mod11
+        zero?)))
 
 
 (defn check-vat-lv
   "Check Latvia's VAT"
   [s]
-  (checksum s {:weight [9 1 4 8 3 10 2 5 7 6]
+  (checksum s {:regex #"^[4-9][0-9]{10}$"
+               :weight [9 1 4 8 3 10 2 5 7 6]
                :check #(let [r (- 3 (mod11 %))]
                         (cond
                           (< r -1) (+ r 11)
@@ -513,16 +537,72 @@
                           (= r -1) -1))}))
 
 
+(def zero-mod37 (zero-mod 37))
+
 (defn check-vat-mt
   "Check Malta's VAT"
   [s]
-  (let [[ss c] (split->nums 6 s)]
-   (checksum (str ss) {:weight [3 4 6 7 8 9]
-                :value  c
-                :check  #(let [r (- 37 (mod % 37))]
-                          (if (= 0 r)
-                            37
-                            r))})))
+  (if-not (re-matches #"[0-9]{8}" s)
+   false
+   (let [[ss c] (split->nums 6 s)]
+     (checksum (str ss) {:weight [3 4 6 7 8 9]
+                         :value  c
+                         :check  #(let [r (zero-mod37 %)]
+                                   (if (= 0 r)
+                                     37
+                                     r))}))))
+
+(def cy-odds
+  {0 1
+   1 0
+   2 5
+   3 7
+   4 9
+   5 13
+   6 15
+   7 17
+   8 19
+   9 21})
+
+(def cy-res (zipmap (iterate inc 0) (map char (range 65 (+ 65 26)))))
+
+(defn check-vat-cy
+  [s]
+  (if-not (re-matches #"^[0-5|9][0-9]{7}[A-Z]$" s)
+    false
+    (let [mod-26 (mod-m 26)
+          [ss [l]] (split-at 8 s)
+          ss (->digits ss)
+          odds (map cy-odds (take-nth 2 ss))
+          evens (take-nth 2 (drop 1 ss))]
+      (->> (concat odds evens)
+           (reduce +)
+           mod-26
+           cy-res
+           (= l )))))
+
+(defn check-vat-no
+  [s]
+  (checksum s {:regex #"^[0-9]{9}$"
+               :weight [3 2 7 6 5 4 3 2]
+               :check #(let [r (zero-mod11 %)]
+                        (cond
+                          (= r 11) 0
+                          (< r 10) r
+                          :else -1
+                          ))}))
+
+
+
+(defn check-vat-che
+  [s]
+  (checksum s {:regex #"^[0-9]{9}$"
+               :weight [5,4,3,2,7,6,5,4]
+               :check #(let [r (zero-mod11 %)]
+                        (condp = r
+                          11 0
+                          10 -1
+                          r))}))
 
 
 (defmulti check-ident (fn [s] (.substring s 0 2)))
@@ -599,6 +679,51 @@
   [s]
   (check-vat-mt (.substring s 2)))
 
+(defmethod check-ident "BE"
+  [s]
+  (check-vat-be (.substring s 2)))
+
+(defmethod check-ident "AT"
+  [s]
+  (check-vat-at (.substring s 2)))
+
+(defmethod check-ident "SI"
+  [s]
+  (check-vat-si (.substring s 2)))
+
+(defmethod check-ident "LU"
+  [s]
+  (check-vat-lu (.substring s 2)))
+
+(defmethod check-ident "SK"
+  [s]
+  (check-vat-sk (.substring s 2)))
+
+(defmethod check-ident "IS"
+  [s]
+  (check-vat-is (.substring s 2)))
+
+(defmethod check-ident "FI"
+  [s]
+  (check-vat-fi (.substring s 2)))
+
+
+(defmethod check-ident "CY"
+  [s]
+  (check-vat-cy (.substring s 2)))
+
+#_(defmethod check-ident "NO"
+  [s]
+  (check-vat-no (.substring s 2)))
+
+#_(defmethod check-ident "CH"
+  [s]
+  (check-vat-che (.substring s 3)))
+
+
+(defmethod check-ident :default
+  [s]
+  true)
 
 
 (defmulti check-vat :ctry )
