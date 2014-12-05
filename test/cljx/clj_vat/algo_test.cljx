@@ -1025,6 +1025,13 @@
   (are [i] (true? (a/check-ident i))
            "00532445O"))
 
+
+(deftest test-check-ident-hr
+  (are [i] (true? (a/check-ident i))
+           "HR30648279396"
+           "HR33392005961"))
+
+
 (time
   (run-tests))
 

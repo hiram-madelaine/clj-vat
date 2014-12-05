@@ -1,12 +1,9 @@
 (ns clj-vat.generative
   (:require
    [clj-vat.algo :as vat]
-   #+clj[clojure.test.check :as tc]
-   #+clj[clojure.test.check.generators :as gen]
-   #+clj[clojure.test.check.properties :as prop]
-   #+cljs[cemerick.double-check.core :as sc]
-   #+cljs[cemerick.double-check.generators :as gen]
-   #+cljs[cemerick.double-check.properties :as prop :include-macros true]))
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check :as tc]
+   [clojure.test.check.properties :as prop :include-macros true]))
 
 
 

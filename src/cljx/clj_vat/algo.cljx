@@ -241,6 +241,14 @@
                :norm +>9
                :check zero-mod10}))
 
+(defn check-fr
+  [siren]
+  (-> siren
+      (mod 97)
+      (* 3)
+      (+ 12)
+      (mod 97)))
+
 (defn check-vat-fr
   "Vérifie la partie numérique d'un numéro de TVA français.
    Check de l'algorithme de Luhn sur le numéro SIREN : les neuf derniers chiffres.
@@ -249,11 +257,7 @@
   (if (re-matches #"[0-9]{11}" s)
    (let [[clef siren] (split->nums 2 s)]
      (and (luhn (str siren))
-          (= clef (-> siren
-                      (mod 97)
-                      (* 3)
-                      (+ 12)
-                      (mod 97)))))
+          (= clef (check-fr siren))))
    false))
 
 (defn check-vat-dk
@@ -605,6 +609,28 @@
                           r))}))
 
 
+(def zero?->10 (p?->r 10 = 0))
+
+(defn iso7064
+  [p n]
+  (-> (+ n p)
+      mod10
+      zero?->10
+      (* 2)
+      mod11))
+
+
+(defn check-vat-hr
+  [s]
+  (let [ck (-> s last ->num)]
+   (checksum s {:regex #"^[0-9]{11}$"
+                :pre   (sub 0 10)
+                :rf    iso7064
+                :init  10
+                :check #(mod10 (+ % ck))
+                :value 1})))
+
+
 (defmulti check-ident (fn [s] (.substring s 0 2)))
 
 (defmethod check-ident "FR"
@@ -711,6 +737,11 @@
 (defmethod check-ident "CY"
   [s]
   (check-vat-cy (.substring s 2)))
+
+(defmethod check-ident "HR"
+  [s]
+  (check-vat-hr (.substring s 2)))
+
 
 #_(defmethod check-ident "NO"
   [s]
